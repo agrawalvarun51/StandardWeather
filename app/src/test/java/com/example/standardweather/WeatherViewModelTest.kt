@@ -1,0 +1,95 @@
+package com.example.standardweather
+
+import com.example.standardweather.domain.model.*
+import com.example.standardweather.domain.repository.WeatherRepository
+import com.example.standardweather.ui.state.WeatherUiState
+import com.example.standardweather.ui.viewmodel.WeatherViewModel
+import io.mockk.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.test.*
+import org.junit.After
+import org.junit.Assert.*
+import org.junit.Before
+import org.junit.Test
+import app.cash.turbine.test
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class WeatherViewModelTest {
+
+    private val testDispatcher = UnconfinedTestDispatcher()
+    private val repository: WeatherRepository = mockk()
+    private lateinit var viewModel: WeatherViewModel
+
+    private val fakeCity = CitySearchResult("10.0_20.0", "TestCity", "TC", null, 10.0, 20.0)
+
+    private val fakeWeatherData = WeatherData(
+        cityId = "10.0_20.0",
+        cityName = "TestCity",
+        country = "TC",
+        lat = 10.0,
+        lon = 20.0,
+        timezone = "UTC",
+        current = CurrentWeather(
+            dt = 1_700_000_000L,
+            temp = 22.0,
+            feelsLike = 20.0,
+            humidity = 60,
+            windSpeed = 5.0,
+            uvi = 3.0,
+            visibility = 10000,
+            weatherId = 800,
+            weatherMain = "Clear",
+            weatherDescription = "clear sky",
+            weatherIcon = "01d"
+        ),
+        hourly = emptyList(),
+        daily = emptyList(),
+        alerts = emptyList(),
+        fetchedAt = System.currentTimeMillis()
+    )
+
+    @Before
+    fun setUp() {
+        Dispatchers.setMain(testDispatcher)
+        viewModel = WeatherViewModel(repository)
+    }
+
+    @After
+    fun tearDown() {
+        Dispatchers.resetMain()
+    }
+
+    @Test
+    fun `loadWeather transitions Loading to Success`() = runTest {
+        every {
+            repository.getWeather(any(), any(), any(), any(), any(), any())
+        } returns flowOf(Result.success(fakeWeatherData))
+
+        viewModel.uiState.test {
+            assertEquals(WeatherUiState.Loading, awaitItem())
+            viewModel.loadWeather(fakeCity)
+            val success = awaitItem()
+            assertTrue(success is WeatherUiState.Success)
+            assertEquals("TestCity", (success as WeatherUiState.Success).data.cityName)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `loadWeather transitions Loading to Error when flow emits failure`() = runTest {
+        every {
+            repository.getWeather(any(), any(), any(), any(), any(), any())
+        } returns flowOf(Result.failure(RuntimeException("No network")))
+
+        viewModel.uiState.test {
+            assertEquals(WeatherUiState.Loading, awaitItem())
+            viewModel.loadWeather(fakeCity)
+            val error = awaitItem()
+            assertTrue(error is WeatherUiState.Error)
+            assertEquals("No network", (error as WeatherUiState.Error).message)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+}
