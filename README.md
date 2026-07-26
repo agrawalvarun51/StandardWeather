@@ -59,34 +59,8 @@ Add it to `local.properties` in the project root:
 WEATHER_API_KEY=your_key_here
 ```
 
-Then just build normally:
 
-```bash
-./gradlew assembleDebug
-```
 
-Or hit Run in Android Studio.
 
----
 
-## Tests
 
-```bash
-./gradlew test
-```
-
-Three test classes:
-
-- `WeatherRepositoryImplTest` — checks the offline-first logic, cache TTL, and search
-- `WeatherViewModelTest` — checks state transitions from Loading to Success/Error
-- `WeatherMapperTest` — makes sure DTO → entity → domain mapping is correct
-
----
-
-## A few assumptions I made
-
-- Using WeatherAPI.com — the free tier covers the `/forecast.json` and `/search.json` endpoints used here
-- Cities are identified by a `lat_lon` key which is unique enough for this use case
-- Hourly forecast is limited to 24 entries, daily to 7
-- On Android 13+ the app asks for notification permission on launch but everything works without it
-- Temperatures are in Celsius
