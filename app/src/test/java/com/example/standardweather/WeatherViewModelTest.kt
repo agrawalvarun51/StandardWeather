@@ -1,19 +1,28 @@
 package com.example.standardweather
 
-import com.example.standardweather.domain.model.*
+import app.cash.turbine.test
+import com.example.standardweather.domain.model.CitySearchResult
+import com.example.standardweather.domain.model.CurrentWeather
+import com.example.standardweather.domain.model.WeatherData
 import com.example.standardweather.domain.repository.WeatherRepository
 import com.example.standardweather.ui.state.WeatherUiState
 import com.example.standardweather.ui.viewmodel.WeatherViewModel
-import io.mockk.*
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.test.*
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
 import org.junit.After
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
-import app.cash.turbine.test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class WeatherViewModelTest {
@@ -68,6 +77,7 @@ class WeatherViewModelTest {
         } returns flowOf(Result.success(fakeWeatherData))
 
         viewModel.uiState.test {
+            // initial value before any city is selected
             assertEquals(WeatherUiState.Loading, awaitItem())
             viewModel.loadWeather(fakeCity)
             val success = awaitItem()
@@ -84,11 +94,57 @@ class WeatherViewModelTest {
         } returns flowOf(Result.failure(RuntimeException("No network")))
 
         viewModel.uiState.test {
+            // initial value before any city is selected
             assertEquals(WeatherUiState.Loading, awaitItem())
             viewModel.loadWeather(fakeCity)
             val error = awaitItem()
             assertTrue(error is WeatherUiState.Error)
             assertEquals("No network", (error as WeatherUiState.Error).message)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+    @Test
+    fun `refresh requests forced weather even when cache emits immediately`() = runTest {
+        every {
+            repository.getWeather(
+                fakeCity.cityId,
+                fakeCity.lat,
+                fakeCity.lon,
+                fakeCity.name,
+                fakeCity.country,
+                false
+            )
+        } returns flowOf(Result.success(fakeWeatherData))
+
+        every {
+            repository.getWeather(
+                fakeCity.cityId,
+                fakeCity.lat,
+                fakeCity.lon,
+                fakeCity.name,
+                fakeCity.country,
+                true
+            )
+        } returns flowOf(Result.success(fakeWeatherData))
+
+        viewModel.uiState.test {
+            assertEquals(WeatherUiState.Loading, awaitItem())
+            viewModel.loadWeather(fakeCity)
+            assertTrue(awaitItem() is WeatherUiState.Success)
+
+            viewModel.refresh()
+            advanceUntilIdle()
+
+            verify {
+                repository.getWeather(
+                    fakeCity.cityId,
+                    fakeCity.lat,
+                    fakeCity.lon,
+                    fakeCity.name,
+                    fakeCity.country,
+                    true
+                )
+            }
             cancelAndIgnoreRemainingEvents()
         }
     }

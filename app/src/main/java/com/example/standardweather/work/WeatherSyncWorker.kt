@@ -11,12 +11,12 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.example.standardweather.WEATHER_ALERT_CHANNEL_ID
 import com.example.standardweather.data.local.dao.WeatherCacheDao
-import com.example.standardweather.data.mapper.toDomain
 import com.example.standardweather.domain.repository.WeatherRepository
 import com.example.standardweather.MainActivity
 import com.example.standardweather.R
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import kotlinx.coroutines.CancellationException
 
 private const val TAG = "WeatherSyncWorker"
 
@@ -37,24 +37,24 @@ class WeatherSyncWorker @AssistedInject constructor(
     override suspend fun doWork(): Result {
         Log.d(TAG, "Starting periodic weather sync")
         return try {
-            // Refresh all cached cities
-            weatherCacheDao.observeAllCached()
-                .collect { cachedList ->
-                    cachedList.forEach { entity ->
-                        val refreshResult = repository.refreshWeather(
-                            cityId = entity.cityId,
-                            lat = entity.lat,
-                            lon = entity.lon,
-                            cityName = entity.cityName,
-                            country = entity.country
-                        )
-                        refreshResult.onSuccess { weather ->
-                            checkExtremeWeather(weather.cityName, weather)
-                        }
-                    }
+            // Refresh all cached cities (single-shot query — not a Flow)
+            val cachedList = weatherCacheDao.getAllCached()
+            cachedList.forEach { entity ->
+                val refreshResult = repository.refreshWeather(
+                    cityId = entity.cityId,
+                    lat = entity.lat,
+                    lon = entity.lon,
+                    cityName = entity.cityName,
+                    country = entity.country
+                )
+                refreshResult.onSuccess { weather ->
+                    checkExtremeWeather(weather.cityName, weather)
                 }
+            }
             Log.d(TAG, "Weather sync completed successfully")
             Result.success()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Weather sync failed", e)
             Result.retry()

@@ -22,6 +22,9 @@ interface WeatherCacheDao {
     @Query("SELECT * FROM weather_cache ORDER BY fetchedAt DESC")
     fun observeAllCached(): Flow<List<WeatherCacheEntity>>
 
+    @Query("SELECT * FROM weather_cache ORDER BY fetchedAt DESC")
+    suspend fun getAllCached(): List<WeatherCacheEntity>
+
     @Query("DELETE FROM weather_cache WHERE cityId = :cityId")
     suspend fun delete(cityId: String)
 

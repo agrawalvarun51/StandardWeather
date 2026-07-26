@@ -6,77 +6,86 @@ import com.example.standardweather.domain.model.CitySearchResult
 import com.example.standardweather.domain.repository.WeatherRepository
 import com.example.standardweather.ui.state.SearchUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-@OptIn(FlowPreview::class)
+@OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class SearchViewModel @Inject constructor(
     private val repository: WeatherRepository
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(SearchUiState())
-    val uiState: StateFlow<SearchUiState> = _uiState.asStateFlow()
-
     private val _query = MutableStateFlow("")
 
-    init {
-        // Observe recent searches from DB
-        repository.getSearchHistory()
-            .onEach { history ->
-                _uiState.update { it.copy(recentSearches = history) }
-            }
-            .launchIn(viewModelScope)
+    private data class SearchResult(
+        val results: List<CitySearchResult> = emptyList(),
+        val isSearching: Boolean = false,
+        val error: String? = null
+    )
 
-        // Debounced search
-        _query
-            .debounce(400)
-            .distinctUntilChanged()
-            .onEach { q ->
-                if (q.isBlank()) {
-                    _uiState.update { it.copy(results = emptyList(), isSearching = false) }
-                } else {
-                    performSearch(q)
-                }
+    private val searchResult: StateFlow<SearchResult> = _query
+        .debounce(400)
+        .distinctUntilChanged()
+        .flatMapLatest { q ->
+            if (q.isBlank()) {
+                flowOf(SearchResult())
+            } else {
+                flowOf(Unit)
+                    .map {
+                        val result = repository.searchCity(q)
+                        result.fold(
+                            onSuccess = { SearchResult(results = it, isSearching = false) },
+                            onFailure = { SearchResult(error = it.message ?: "Search failed") }
+                        )
+                    }
+                    .onStart { emit(SearchResult(isSearching = true)) }
             }
-            .launchIn(viewModelScope)
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = SearchResult()
+        )
+
+    val uiState: StateFlow<SearchUiState> = combine(
+        _query,
+        searchResult,
+        repository.getSearchHistory()
+    ) { query, search, history ->
+        SearchUiState(
+            query = query,
+            results = search.results,
+            recentSearches = history,
+            isSearching = search.isSearching,
+            error = search.error
+        )
     }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = SearchUiState()
+        )
 
     fun onQueryChanged(query: String) {
-        _uiState.update { it.copy(query = query) }
         _query.value = query
-    }
-
-    fun clearQuery() {
-        _uiState.update { it.copy(query = "", results = emptyList()) }
-        _query.value = ""
     }
 
     fun onCitySelected(city: CitySearchResult) {
         viewModelScope.launch {
             repository.saveSearchHistory(city)
         }
-    }
-
-    private suspend fun performSearch(query: String) {
-        _uiState.update { it.copy(isSearching = true, error = null) }
-        repository.searchCity(query)
-            .onSuccess { results ->
-                _uiState.update { it.copy(results = results, isSearching = false) }
-            }
-            .onFailure { err ->
-                _uiState.update {
-                    it.copy(isSearching = false, error = err.message ?: "Search failed")
-                }
-            }
     }
 }

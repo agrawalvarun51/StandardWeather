@@ -44,5 +44,5 @@ val HeatBottom = Color(0xFFFF7043)
 val OnDarkBg = Color(0xFFF5F5F5)
 val OnLightBg = Color(0xFF1C1B1F)
 
-val SurfaceLight = Color(0x33FFFFFF)    // 20% white overlay for cards
-val SurfaceDark  = Color(0x33000000)   // 20% black overlay
+val SurfaceLight = Color(0x33FFFFFF)
+val SurfaceDark  = Color(0x33000000)

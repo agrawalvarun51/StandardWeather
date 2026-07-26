@@ -11,6 +11,7 @@ import com.example.standardweather.data.remote.WeatherApiService
 import com.example.standardweather.domain.model.CitySearchResult
 import com.example.standardweather.domain.model.WeatherData
 import com.example.standardweather.domain.repository.WeatherRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.filterNotNull
@@ -46,17 +47,22 @@ class WeatherRepositoryImpl @Inject constructor(
         // 2. Refresh if stale or forced
         val fetchedAt = cached?.fetchedAt ?: 0L
         val stale = (System.currentTimeMillis() - fetchedAt) > CACHE_TTL_MS
+        var storedCityId = cached?.cityId ?: cityId
         if (forceRefresh || stale) {
-            runCatching { fetchAndCache(lat, lon) }
-                .onSuccess { fresh -> emit(Result.success(fresh)) }
-                .onFailure { err ->
-                    if (cached == null) emit(Result.failure(err))
-                }
+            try {
+                val fresh = fetchAndCache(lat, lon)
+                storedCityId = fresh.cityId  // use the key the entity was actually stored under
+                emit(Result.success(fresh))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (cached == null) emit(Result.failure(e))
+            }
         }
 
-        // Observe DB so WorkManager-triggered refreshes propagate to the UI
+        // Observe DB so WorkManager-triggered refreshes propagate to the UI.
         emitAll(
-            weatherCacheDao.observeWeather(cityId)
+            weatherCacheDao.observeWeather(storedCityId)
                 .filterNotNull()
                 .map { entity -> Result.success(entity.toDomain()) }
         )
@@ -73,11 +79,17 @@ class WeatherRepositoryImpl @Inject constructor(
     }
 
     override suspend fun searchCity(query: String): Result<List<CitySearchResult>> =
-        runCatching {
-            api.searchCity(
-                apiKey = BuildConfig.WEATHER_API_KEY,
-                query  = query
-            ).map { it.toCitySearchResult() }
+        try {
+            Result.success(
+                api.searchCity(
+                    apiKey = BuildConfig.WEATHER_API_KEY,
+                    query  = query
+                ).map { it.toCitySearchResult() }
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
         }
 
     override fun getSearchHistory(): Flow<List<CitySearchResult>> =
@@ -102,5 +114,12 @@ class WeatherRepositoryImpl @Inject constructor(
         lon: Double,
         cityName: String,
         country: String
-    ): Result<WeatherData> = runCatching { fetchAndCache(lat, lon) }
+    ): Result<WeatherData> =
+        try {
+            Result.success(fetchAndCache(lat, lon))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
 }

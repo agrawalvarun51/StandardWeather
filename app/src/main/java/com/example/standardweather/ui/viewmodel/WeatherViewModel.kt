@@ -6,65 +6,91 @@ import com.example.standardweather.domain.model.CitySearchResult
 import com.example.standardweather.domain.repository.WeatherRepository
 import com.example.standardweather.ui.state.WeatherUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class WeatherViewModel @Inject constructor(
     private val repository: WeatherRepository
 ) : ViewModel() {
+    private val selectedCity = MutableStateFlow<CitySearchResult?>(null)
 
-    private val _uiState = MutableStateFlow<WeatherUiState>(WeatherUiState.Loading)
-    val uiState: StateFlow<WeatherUiState> = _uiState.asStateFlow()
+    private val refreshRequests = MutableSharedFlow<Unit>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
 
-    private var currentCity: CitySearchResult? = null
-
-    fun loadWeather(city: CitySearchResult, forceRefresh: Boolean = false) {
-        currentCity = city
-        _uiState.value = WeatherUiState.Loading
-
-        repository.getWeather(
-            cityId = city.cityId,
-            lat = city.lat,
-            lon = city.lon,
-            cityName = city.name,
-            country = city.country,
-            forceRefresh = forceRefresh
-        )
-            .onEach { result ->
-                result
-                    .onSuccess { data ->
-                        _uiState.update { current ->
-                            val isRefreshing = current is WeatherUiState.Success
-                            WeatherUiState.Success(data, isRefreshing = isRefreshing)
+    val uiState: StateFlow<WeatherUiState> = selectedCity
+        .flatMapLatest { city ->
+            if (city == null) {
+                flowOf(WeatherUiState.Loading)
+            } else {
+                merge(
+                    flowOf(false),
+                    refreshRequests.map { true }
+                ).flatMapLatest { refresh ->
+                    repository.getWeather(
+                        cityId = city.cityId,
+                        lat = city.lat,
+                        lon = city.lon,
+                        cityName = city.name,
+                        country = city.country,
+                        forceRefresh = refresh
+                    )
+                        .map { result ->
+                            result.fold(
+                                onSuccess = { data -> WeatherUiState.Success(data, isRefreshing = false) },
+                                onFailure = { err ->
+                                    WeatherUiState.Error(
+                                        message = err.message ?: "Unknown error"
+                                    )
+                                }
+                            )
                         }
-                    }
-                    .onFailure { err ->
-                        val cached = (_uiState.value as? WeatherUiState.Success)?.data
-                        _uiState.value = WeatherUiState.Error(
-                            message = err.message ?: "Unknown error",
-                            cachedData = cached
-                        )
-                    }
+                        .catch { err ->
+                            emit(WeatherUiState.Error(message = err.message ?: "Unknown error"))
+                        }
+                        .let { weatherFlow ->
+                            if (refresh) {
+                                weatherFlow.onStart {
+                                    val currentState = uiState.value
+                                    if (currentState is WeatherUiState.Success) {
+                                        emit(currentState.copy(isRefreshing = true))
+                                    }
+                                }
+                            } else {
+                                weatherFlow
+                            }
+                        }
+                }
             }
-            .catch { err ->
-                val cached = (_uiState.value as? WeatherUiState.Success)?.data
-                _uiState.value = WeatherUiState.Error(
-                    message = err.message ?: "Unknown error",
-                    cachedData = cached
-                )
-            }
-            .launchIn(viewModelScope)
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = WeatherUiState.Loading
+        )
+
+    fun loadWeather(city: CitySearchResult) {
+        selectedCity.value = city
     }
 
     fun refresh() {
-        currentCity?.let { loadWeather(it, forceRefresh = true) }
+        if (selectedCity.value != null) {
+            refreshRequests.tryEmit(Unit)
+        }
     }
 }
