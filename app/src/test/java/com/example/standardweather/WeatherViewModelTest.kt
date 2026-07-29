@@ -5,8 +5,11 @@ import com.example.standardweather.domain.model.CitySearchResult
 import com.example.standardweather.domain.model.CurrentWeather
 import com.example.standardweather.domain.model.WeatherData
 import com.example.standardweather.domain.repository.WeatherRepository
+import com.example.standardweather.domain.usecase.GetCityForWeatherUseCase
+import com.example.standardweather.domain.usecase.ObserveWeatherUseCase
 import com.example.standardweather.ui.state.WeatherUiState
 import com.example.standardweather.ui.viewmodel.WeatherViewModel
+import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -62,7 +65,11 @@ class WeatherViewModelTest {
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
-        viewModel = WeatherViewModel(repository)
+        coEvery { repository.getCityForWeather(fakeCity.cityId) } returns fakeCity
+        viewModel = WeatherViewModel(
+            ObserveWeatherUseCase(repository),
+            GetCityForWeatherUseCase(repository)
+        )
     }
 
     @After
@@ -79,7 +86,7 @@ class WeatherViewModelTest {
         viewModel.uiState.test {
             // initial value before any city is selected
             assertEquals(WeatherUiState.Loading, awaitItem())
-            viewModel.loadWeather(fakeCity)
+            viewModel.loadWeather(fakeCity.cityId)
             val success = awaitItem()
             assertTrue(success is WeatherUiState.Success)
             assertEquals("TestCity", (success as WeatherUiState.Success).data.cityName)
@@ -96,7 +103,7 @@ class WeatherViewModelTest {
         viewModel.uiState.test {
             // initial value before any city is selected
             assertEquals(WeatherUiState.Loading, awaitItem())
-            viewModel.loadWeather(fakeCity)
+            viewModel.loadWeather(fakeCity.cityId)
             val error = awaitItem()
             assertTrue(error is WeatherUiState.Error)
             assertEquals("No network", (error as WeatherUiState.Error).message)
@@ -129,7 +136,7 @@ class WeatherViewModelTest {
 
         viewModel.uiState.test {
             assertEquals(WeatherUiState.Loading, awaitItem())
-            viewModel.loadWeather(fakeCity)
+            viewModel.loadWeather(fakeCity.cityId)
             assertTrue(awaitItem() is WeatherUiState.Success)
 
             viewModel.refresh()

@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -32,31 +33,29 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.standardweather.domain.model.CitySearchResult
 import com.example.standardweather.domain.model.DailyWeather
 import com.example.standardweather.domain.model.HourlyWeather
 import com.example.standardweather.domain.model.WeatherData
 import com.example.standardweather.ui.state.WeatherUiState
+import com.example.standardweather.ui.theme.WeatherColorSet
 import com.example.standardweather.ui.theme.weatherColorsFor
 import com.example.standardweather.ui.theme.weatherConditionThemeFor
 import com.example.standardweather.ui.viewmodel.WeatherViewModel
 import java.text.SimpleDateFormat
 import java.util.*
-import androidx.compose.ui.graphics.drawscope.DrawScope
-import com.example.standardweather.ui.theme.WeatherColorSet
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WeatherScreen(
-    city: CitySearchResult,
+    cityId: String,
     onBack: () -> Unit,
     viewModel: WeatherViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    LaunchedEffect(city) {
-        viewModel.loadWeather(city)
+    LaunchedEffect(cityId) {
+        viewModel.loadWeather(cityId)
     }
 
     when (val state = uiState) {

@@ -95,6 +95,21 @@ class WeatherRepositoryImpl @Inject constructor(
     override fun getSearchHistory(): Flow<List<CitySearchResult>> =
         searchHistoryDao.observeRecent().map { list -> list.map { it.toCitySearchResult() } }
 
+    override suspend fun getCityForWeather(cityId: String): CitySearchResult? {
+        weatherCacheDao.getWeather(cityId)?.let { cached ->
+            return CitySearchResult(
+                cityId = cached.cityId,
+                name = cached.cityName,
+                country = cached.country,
+                state = null,
+                lat = cached.lat,
+                lon = cached.lon
+            )
+        }
+
+        return searchHistoryDao.getByCityId(cityId)?.toCitySearchResult()
+    }
+
     override suspend fun saveSearchHistory(city: CitySearchResult) {
         searchHistoryDao.upsert(
             SearchHistoryEntity(

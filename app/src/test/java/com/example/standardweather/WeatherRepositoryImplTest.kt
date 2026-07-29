@@ -1,8 +1,10 @@
 package com.example.standardweather
 
-import com.example.standardweather.data.local.entity.WeatherCacheEntity
-import com.example.standardweather.data.local.dao.WeatherCacheDao
 import com.example.standardweather.data.local.dao.SearchHistoryDao
+import com.example.standardweather.data.local.dao.WeatherCacheDao
+import com.example.standardweather.data.local.entity.WeatherCacheEntity
+import com.example.standardweather.data.local.model.CachedDailyForecast
+import com.example.standardweather.data.local.model.CachedHourlyForecast
 import com.example.standardweather.data.remote.WeatherApiService
 import com.example.standardweather.data.remote.model.*
 import com.example.standardweather.data.repository.WeatherRepositoryImpl
@@ -33,7 +35,9 @@ class WeatherRepositoryImplTest {
         currentWeatherMain = "Partly Cloudy",
         currentWeatherDescription = "partly cloudy",
         currentWeatherIcon = "https://cdn.weatherapi.com/weather/64x64/day/116.png",
-        hourlyJson = "[]", dailyJson = "[]", alertsJson = null,
+        hourly = emptyList<CachedHourlyForecast>(),
+        daily = emptyList<CachedDailyForecast>(),
+        alerts = null,
         fetchedAt = System.currentTimeMillis()
     )
 

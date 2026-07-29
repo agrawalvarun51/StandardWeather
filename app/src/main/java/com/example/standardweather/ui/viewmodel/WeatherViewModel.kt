@@ -3,7 +3,8 @@ package com.example.standardweather.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.standardweather.domain.model.CitySearchResult
-import com.example.standardweather.domain.repository.WeatherRepository
+import com.example.standardweather.domain.usecase.GetCityForWeatherUseCase
+import com.example.standardweather.domain.usecase.ObserveWeatherUseCase
 import com.example.standardweather.ui.state.WeatherUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -24,11 +25,12 @@ import javax.inject.Inject
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class WeatherViewModel @Inject constructor(
-    private val repository: WeatherRepository
+    private val observeWeatherUseCase: ObserveWeatherUseCase,
+    private val getCityForWeatherUseCase: GetCityForWeatherUseCase
 ) : ViewModel() {
     private val selectedCity = MutableStateFlow<CitySearchResult?>(null)
 
-    private val refreshRequests = MutableSharedFlow<Unit>(
+    private val refreshRequests = MutableSharedFlow<WeatherRequest>(
         extraBufferCapacity = 1,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
@@ -39,17 +41,10 @@ class WeatherViewModel @Inject constructor(
                 flowOf(WeatherUiState.Loading)
             } else {
                 merge(
-                    flowOf(false),
-                    refreshRequests.map { true }
-                ).flatMapLatest { refresh ->
-                    repository.getWeather(
-                        cityId = city.cityId,
-                        lat = city.lat,
-                        lon = city.lon,
-                        cityName = city.name,
-                        country = city.country,
-                        forceRefresh = refresh
-                    )
+                    flowOf(WeatherRequest.Initial),
+                    refreshRequests
+                ).flatMapLatest { request ->
+                    observeWeatherUseCase(city, forceRefresh = request is WeatherRequest.Refresh)
                         .map { result ->
                             result.fold(
                                 onSuccess = { data -> WeatherUiState.Success(data, isRefreshing = false) },
@@ -64,7 +59,7 @@ class WeatherViewModel @Inject constructor(
                             emit(WeatherUiState.Error(message = err.message ?: "Unknown error"))
                         }
                         .let { weatherFlow ->
-                            if (refresh) {
+                            if (request is WeatherRequest.Refresh) {
                                 weatherFlow.onStart {
                                     val currentState = uiState.value
                                     if (currentState is WeatherUiState.Success) {
@@ -84,13 +79,13 @@ class WeatherViewModel @Inject constructor(
             initialValue = WeatherUiState.Loading
         )
 
-    fun loadWeather(city: CitySearchResult) {
-        selectedCity.value = city
+    suspend fun loadWeather(cityId: String) {
+        selectedCity.value = getCityForWeatherUseCase(cityId)
     }
 
     fun refresh() {
         if (selectedCity.value != null) {
-            refreshRequests.tryEmit(Unit)
+            refreshRequests.tryEmit(WeatherRequest.Refresh)
         }
     }
 }

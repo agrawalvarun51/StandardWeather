@@ -2,6 +2,9 @@ package com.example.standardweather.data.local.entity
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import com.example.standardweather.data.local.model.CachedDailyForecast
+import com.example.standardweather.data.local.model.CachedHourlyForecast
+import com.example.standardweather.data.local.model.CachedWeatherAlert
 
 /**
  * Represents the cached weather snapshot for a given city.
@@ -27,10 +30,9 @@ data class WeatherCacheEntity(
     val currentWeatherMain: String,
     val currentWeatherDescription: String,
     val currentWeatherIcon: String,
-    // Serialised JSON for list fields (hourly / daily / alerts)
-    val hourlyJson: String,
-    val dailyJson: String,
-    val alertsJson: String?,
+    val hourly: List<CachedHourlyForecast>,
+    val daily: List<CachedDailyForecast>,
+    val alerts: List<CachedWeatherAlert>?,
     // Cache metadata
     val fetchedAt: Long = System.currentTimeMillis()
 )

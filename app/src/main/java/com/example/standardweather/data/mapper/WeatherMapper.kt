@@ -2,26 +2,20 @@ package com.example.standardweather.data.mapper
 
 import com.example.standardweather.data.local.entity.SearchHistoryEntity
 import com.example.standardweather.data.local.entity.WeatherCacheEntity
-import com.example.standardweather.data.remote.model.DailyWeatherDto
-import com.example.standardweather.data.remote.model.DailyTempDto
-import com.example.standardweather.data.remote.model.HourlyWeatherDto
-import com.example.standardweather.data.remote.model.WaSearchResultDto
+import com.example.standardweather.data.local.model.CachedDailyForecast
+import com.example.standardweather.data.local.model.CachedDailyTemperature
+import com.example.standardweather.data.local.model.CachedHourlyForecast
+import com.example.standardweather.data.local.model.CachedWeatherAlert
+import com.example.standardweather.data.local.model.CachedWeatherCondition
 import com.example.standardweather.data.remote.model.WaAlertDto
-import com.example.standardweather.data.remote.model.WeatherAlertDto
+import com.example.standardweather.data.remote.model.WaSearchResultDto
 import com.example.standardweather.data.remote.model.WeatherApiForecastResponse
-import com.example.standardweather.data.remote.model.WeatherConditionDto
 import com.example.standardweather.domain.model.CitySearchResult
 import com.example.standardweather.domain.model.CurrentWeather
 import com.example.standardweather.domain.model.DailyWeather
 import com.example.standardweather.domain.model.HourlyWeather
 import com.example.standardweather.domain.model.WeatherAlert
 import com.example.standardweather.domain.model.WeatherData
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
-
-private val gson = Gson()
-
-// WeatherAPI.com response → Room entity
 
 fun WeatherApiForecastResponse.toEntity(
     fetchedAt: Long = System.currentTimeMillis()
@@ -29,11 +23,11 @@ fun WeatherApiForecastResponse.toEntity(
     val cityId = "${location.lat}_${location.lon}"
 
     // Map hourly from all forecastdays → flat list, capped at 24
-    val hourlyDtos: List<HourlyWeatherDto> = forecast.forecastday
+    val hourlyDtos: List<CachedHourlyForecast> = forecast.forecastday
         .flatMap { it.hour }
         .take(24)
         .map { h ->
-            HourlyWeatherDto(
+            CachedHourlyForecast(
                 dt = h.timeEpoch,
                 temp = h.tempC,
                 feelsLike = h.feelslikeC,
@@ -41,7 +35,7 @@ fun WeatherApiForecastResponse.toEntity(
                 windSpeed = h.windKph / 3.6,          // kph → m/s
                 pop = h.chanceOfRain / 100.0,
                 weather = listOf(
-                    WeatherConditionDto(
+                    CachedWeatherCondition(
                         id   = h.condition.code,
                         main = h.condition.text,
                         description = h.condition.text.lowercase(),
@@ -52,10 +46,10 @@ fun WeatherApiForecastResponse.toEntity(
         }
 
     // Map daily — one entry per forecastday
-    val dailyDtos: List<DailyWeatherDto> = forecast.forecastday.map { fd ->
-        DailyWeatherDto(
+    val dailyDtos: List<CachedDailyForecast> = forecast.forecastday.map { fd ->
+        CachedDailyForecast(
             dt = fd.dateEpoch,
-            temp = DailyTempDto(
+            temp = CachedDailyTemperature(
                 day   = fd.day.avgtempC,
                 min   = fd.day.mintempC,
                 max   = fd.day.maxtempC,
@@ -66,7 +60,7 @@ fun WeatherApiForecastResponse.toEntity(
             pop       = fd.day.chanceOfRain / 100.0,
             summary   = null,
             weather   = listOf(
-                WeatherConditionDto(
+                CachedWeatherCondition(
                     id   = fd.day.condition.code,
                     main = fd.day.condition.text,
                     description = fd.day.condition.text.lowercase(),
@@ -77,7 +71,7 @@ fun WeatherApiForecastResponse.toEntity(
     }
 
     // Map alerts
-    val alertDtos: List<WeatherAlertDto> = alerts?.alert.orEmpty().map { it.toAlertDto() }
+    val alertDtos: List<CachedWeatherAlert> = alerts?.alert.orEmpty().map { it.toAlertDto() }
 
     return WeatherCacheEntity(
         cityId      = cityId,
@@ -97,14 +91,14 @@ fun WeatherApiForecastResponse.toEntity(
         currentWeatherMain        = current.condition.text,
         currentWeatherDescription = current.condition.text.lowercase(),
         currentWeatherIcon        = "https:${current.condition.icon}",
-        hourlyJson  = gson.toJson(hourlyDtos),
-        dailyJson   = gson.toJson(dailyDtos),
-        alertsJson  = if (alertDtos.isEmpty()) null else gson.toJson(alertDtos),
+        hourly      = hourlyDtos,
+        daily       = dailyDtos,
+        alerts      = alertDtos.ifEmpty { null },
         fetchedAt   = fetchedAt
     )
 }
 
-private fun WaAlertDto.toAlertDto() = WeatherAlertDto(
+private fun WaAlertDto.toAlertDto() = CachedWeatherAlert(
     senderName  = areas ?: "Weather Service",
     event       = event,
     start       = 0L,
@@ -115,14 +109,6 @@ private fun WaAlertDto.toAlertDto() = WeatherAlertDto(
 // Room entity → domain model
 
 fun WeatherCacheEntity.toDomain(): WeatherData {
-    val hourlyType = object : TypeToken<List<HourlyWeatherDto>>() {}.type
-    val dailyType  = object : TypeToken<List<DailyWeatherDto>>() {}.type
-    val alertType  = object : TypeToken<List<WeatherAlertDto>>() {}.type
-
-    val hourlyDtos: List<HourlyWeatherDto> = gson.fromJson(hourlyJson, hourlyType)
-    val dailyDtos:  List<DailyWeatherDto>  = gson.fromJson(dailyJson,  dailyType)
-    val alertDtos:  List<WeatherAlertDto>? = alertsJson?.let { gson.fromJson(it, alertType) }
-
     return WeatherData(
         cityId   = cityId,
         cityName = cityName,
@@ -143,7 +129,7 @@ fun WeatherCacheEntity.toDomain(): WeatherData {
             weatherDescription = currentWeatherDescription,
             weatherIcon      = currentWeatherIcon
         ),
-        hourly = hourlyDtos.map { h ->
+        hourly = hourly.map { h ->
             HourlyWeather(
                 dt               = h.dt,
                 temp             = h.temp,
@@ -157,7 +143,7 @@ fun WeatherCacheEntity.toDomain(): WeatherData {
                 weatherIcon      = h.weather.firstOrNull()?.icon ?: ""
             )
         },
-        daily = dailyDtos.map { d ->
+        daily = daily.map { d ->
             DailyWeather(
                 dt          = d.dt,
                 tempDay     = d.temp.day,
@@ -174,7 +160,7 @@ fun WeatherCacheEntity.toDomain(): WeatherData {
                 weatherIcon = d.weather.firstOrNull()?.icon ?: ""
             )
         },
-        alerts = alertDtos?.map { a ->
+        alerts = alerts?.map { a ->
             WeatherAlert(
                 senderName  = a.senderName,
                 event       = a.event,

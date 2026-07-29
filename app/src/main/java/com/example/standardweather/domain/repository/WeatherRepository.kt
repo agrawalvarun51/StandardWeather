@@ -19,6 +19,8 @@ interface WeatherRepository {
 
     fun getSearchHistory(): Flow<List<CitySearchResult>>
 
+    suspend fun getCityForWeather(cityId: String): CitySearchResult?
+
     suspend fun saveSearchHistory(city: CitySearchResult)
 
     suspend fun refreshWeather(cityId: String, lat: Double, lon: Double, cityName: String, country: String): Result<WeatherData>

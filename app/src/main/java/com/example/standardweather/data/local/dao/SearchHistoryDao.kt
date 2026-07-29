@@ -16,6 +16,9 @@ interface SearchHistoryDao {
     @Query("SELECT * FROM search_history ORDER BY searchedAt DESC LIMIT 10")
     fun observeRecent(): Flow<List<SearchHistoryEntity>>
 
+    @Query("SELECT * FROM search_history WHERE cityId = :cityId LIMIT 1")
+    suspend fun getByCityId(cityId: String): SearchHistoryEntity?
+
     @Query("DELETE FROM search_history WHERE cityId = :cityId")
     suspend fun delete(cityId: String)
 }

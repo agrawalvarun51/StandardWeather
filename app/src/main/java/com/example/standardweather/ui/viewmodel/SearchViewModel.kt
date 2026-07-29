@@ -15,8 +15,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -43,15 +43,14 @@ class SearchViewModel @Inject constructor(
             if (q.isBlank()) {
                 flowOf(SearchResult())
             } else {
-                flowOf(Unit)
-                    .map {
-                        val result = repository.searchCity(q)
-                        result.fold(
+                flow {
+                    emit(
+                        repository.searchCity(q).fold(
                             onSuccess = { SearchResult(results = it, isSearching = false) },
                             onFailure = { SearchResult(error = it.message ?: "Search failed") }
                         )
-                    }
-                    .onStart { emit(SearchResult(isSearching = true)) }
+                    )
+                }.onStart { emit(SearchResult(isSearching = true)) }
             }
         }
         .stateIn(

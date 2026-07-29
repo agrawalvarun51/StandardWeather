@@ -14,6 +14,7 @@ import com.example.standardweather.data.local.dao.WeatherCacheDao
 import com.example.standardweather.domain.repository.WeatherRepository
 import com.example.standardweather.MainActivity
 import com.example.standardweather.R
+import com.example.standardweather.domain.model.WeatherData
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.CancellationException
@@ -63,7 +64,7 @@ class WeatherSyncWorker @AssistedInject constructor(
 
     private fun checkExtremeWeather(
         cityName: String,
-        weather: com.example.standardweather.domain.model.WeatherData
+        weather: WeatherData
     ) {
         val current = weather.current
         val alerts = weather.alerts
